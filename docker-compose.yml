@@ -1,0 +1,44 @@
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: data430_postgres
+    environment:
+      POSTGRES_DB: data430
+      POSTGRES_USER: data430
+      POSTGRES_PASSWORD: data430pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U data430 -d data430"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  airflow:
+    image: apache/airflow:2.10.5
+    container_name: data430_airflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      _PIP_ADDITIONAL_REQUIREMENTS: "Faker PyYAML psycopg2-binary"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./scripts:/opt/airflow/scripts
+      - ./sql:/opt/airflow/sql
+    command: standalone
+
+volumes:
+  postgres_data:
