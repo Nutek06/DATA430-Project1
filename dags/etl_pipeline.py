@@ -1,4 +1,4 @@
-
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -13,13 +13,12 @@ from airflow.operators.python import PythonOperator
 DATA_DIR = Path("/opt/airflow/data")
 
 DB_CONFIG = {
-    "host": "postgres",
-    "database": "data430",
-    "user": "data430",
-    "password": "data430pass",
-    "port": 5432,
+    "host": os.getenv("POSTGRES_HOST", "postgres"),
+    "database": os.getenv("POSTGRES_DB", "data430"),
+    "user": os.getenv("POSTGRES_USER", "data430"),
+    "password": os.getenv("POSTGRES_PASSWORD"),
+    "port": int(os.getenv("POSTGRES_PORT", "5432")),
 }
-
 
 def extract_dataset(entity, extension):
     path = DATA_DIR / f"{entity}.{extension}"

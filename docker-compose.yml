@@ -4,9 +4,9 @@ services:
     image: postgres:16
     container_name: data430_postgres
     environment:
-      POSTGRES_DB: data430
-      POSTGRES_USER: data430
-      POSTGRES_PASSWORD: data430pass
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -26,6 +26,8 @@ services:
         condition: service_healthy
     environment:
       AIRFLOW_HOME: /opt/airflow
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
