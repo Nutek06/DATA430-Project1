@@ -1,294 +1,181 @@
-\# DATA-430 Project 1: Rapid ETL Pipeline Development
 
+# DATA-430 Project 1: Rapid ETL Pipeline Development
 
+## 1. Project Overview
 
-\## 1. Project Overview
+This project implements an automated Extract, Transform, Load (ETL) pipeline using Python, Apache Airflow, PostgreSQL, and Docker Compose.
 
+The pipeline generates synthetic customer, product, and order datasets. Each dataset is stored in CSV, JSON, and YAML formats. The pipeline validates the files, loads the data into PostgreSQL, checks database results, and records execution details in an audit table.
 
+Apache Airflow orchestrates the workflow, supports manual execution, and schedules the pipeline to run daily.
 
-The purpose of this project is to develop an automated ETL (Extract, Transform, Load) pipeline using Python, Apache Airflow, and PostgreSQL.
+## 2. Technologies Used
 
+- **Python:** Generates and processes data.
+- **Pandas:** Reads and processes CSV, JSON, and YAML data.
+- **Faker:** Generates synthetic sample data.
+- **PyYAML:** Reads YAML files.
+- **Apache Airflow:** Orchestrates and monitors ETL tasks.
+- **PostgreSQL:** Stores customer, product, order, and audit data.
+- **Docker Compose:** Runs the Airflow and PostgreSQL services.
 
-
-The pipeline generates synthetic customer, product, and order datasets, stores them in CSV, JSON, and YAML formats, validates the files, and loads the data into a PostgreSQL database. Apache Airflow manages the workflow and allows the pipeline to be triggered manually or scheduled to run daily.
-
-
-
-\## 2. Technologies Used
-
-
-
-\- \*\*Python:\*\* Generates synthetic datasets and processes data.
-
-\- \*\*Pandas:\*\* Supports data processing and transformation.
-
-\- \*\*Faker:\*\* Generates realistic sample data.
-
-\- \*\*PyYAML:\*\* Reads and supports YAML data.
-
-\- \*\*Apache Airflow:\*\* Orchestrates and monitors ETL tasks.
-
-\- \*\*PostgreSQL:\*\* Stores the processed customer, product, and order data.
-
-\- \*\*Docker Compose:\*\* Runs the Airflow and PostgreSQL services in containers.
-
-
-
-\## 3. Project Structure
-
-
+## 3. Project Structure
 
 ```text
-
-DATA430\_Project1/
-
+DATA430_Project1/
 ├── dags/
-
-│   └── etl\_pipeline.py
-
+│   └── etl_pipeline.py
 ├── data/
-
 │   ├── customers.csv
-
 │   ├── customers.json
-
 │   ├── customers.yaml
-
 │   ├── products.csv
-
 │   ├── products.json
-
 │   ├── products.yaml
-
 │   ├── orders.csv
-
 │   ├── orders.json
-
 │   └── orders.yaml
-
 ├── docs/
-
-├── scripts/
-
+│   ├── Technical_Documentation.md
+│   └── User_Guide.md
 ├── sql/
-
 │   └── schema.sql
-
-├── generate\_data.py
-
+├── generate_data.py
 ├── requirements.txt
-
 ├── docker-compose.yml
-
+├── .env.example
+├── .gitignore
 └── README.md
-
 ```
 
+## 4. Dataset Description
 
+The project generates three datasets, each containing 1,000 records.
 
-\## 4. Dataset Description
+- **Customers:** Customer ID, name, email, phone, city, registration date, and customer type.
+- **Products:** Product ID, product name, category, brand, unit price, stock quantity, and active status.
+- **Orders:** Order ID, customer ID, order date, order status, payment method, total amount, discount, and shipping cost.
 
+Each dataset is provided in CSV, JSON, and YAML formats, resulting in nine data files.
 
+## 5. Prerequisites
 
-The project generates three datasets, with 1,000 records in each dataset.
+Install and start Docker Desktop before running the project. Docker Compose is used to manage the services.
 
+The project directory should contain the Python script, DAG, SQL schema, data files, and Docker Compose configuration described above.
 
-
-\- \*\*Customers:\*\* Customer ID, name, email, phone, city, registration date, and customer type.
-
-\- \*\*Products:\*\* Product ID, product name, category, brand, unit price, stock quantity, and active status.
-
-\- \*\*Orders:\*\* Order ID, customer ID, order date, order status, payment method, total amount, discount, and shipping cost.
-
-
-
-Each dataset is saved in CSV, JSON, and YAML formats, resulting in nine data files.
-
-
-
-\## 5. Environment Setup
-
-
-
-The project uses Docker Desktop and Docker Compose to run the required services.
-
-
-
-Prerequisites:
-
-
-
-\- Docker Desktop installed and running.
-
-\- Python and the required Python packages for data generation.
-
-\- Apache Airflow running in a Docker container.
-
-\- PostgreSQL running in a Docker container.
-
-
-
-\## 6. Generate the Datasets
-
-
+## 6. Generate the Datasets
 
 Open PowerShell in the project directory and run:
 
-
-
 ```powershell
-
-docker run --rm -v "${PWD}:/app" -w /app python:3.12-slim sh -c "pip install -q Faker PyYAML \&\& python generate\_data.py"
-
+docker run --rm -v "${PWD}:/app" -w /app python:3.12-slim sh -c "pip install -q Faker PyYAML && python generate_data.py"
 ```
 
+The script creates the customer, product, and order datasets in CSV, JSON, and YAML formats inside the `data` directory.
 
+## 7. Start the ETL Services
 
-The script creates customer, product, and order datasets in CSV, JSON, and YAML formats inside the `data` folder.
-
-
-
-\## 7. Start the ETL Services
-
-
-
-Start the PostgreSQL service:
-
-
+Start the services from the project directory:
 
 ```powershell
-
-docker compose up -d postgres
-
+docker compose up -d
 ```
 
-
-
-Start the Airflow service:
-
-
+Check their status:
 
 ```powershell
-
-docker compose up -d airflow
-
-```
-
-
-
-Check the status of the services:
-
-
-
-```powershell
-
 docker compose ps
-
 ```
 
+PostgreSQL should report a healthy status before the pipeline runs.
 
-
-\## 8. Run the ETL Pipeline
-
-
-
-1\. Open `http://localhost:8080` in a web browser.
-
-2\. Sign in to the Apache Airflow interface.
-
-3\. Locate the DAG named `data430\_etl\_pipeline`.
-
-4\. Unpause the DAG if necessary.
-
-5\. Trigger the DAG manually.
-
-6\. Monitor the tasks in the Graph or Grid view.
-
-7\. Confirm that all tasks complete successfully.
-
-
-
-The pipeline validates the input files, prepares the database tables, processes the datasets, loads records, validates the results, and records execution details in the audit table.
-
-
-
-\## 9. Database Validation
-
-
-
-Run the following command in PowerShell to check the number of records in each database table:
-
-
+To inspect service logs, use:
 
 ```powershell
-
-docker compose exec postgres psql -U data430 -d data430 -c "SELECT 'customers' AS table\_name, COUNT(\*) FROM customers UNION ALL SELECT 'products', COUNT(\*) FROM products UNION ALL SELECT 'orders', COUNT(\*) FROM orders;"
-
+docker compose logs --tail 100 airflow
+docker compose logs --tail 100 postgres
 ```
 
+## 8. Access Airflow and Run the Pipeline
 
+1. Open `http://localhost:8080` in a web browser.
+2. Sign in to the Airflow interface.
+3. Locate the DAG named `data430_etl_pipeline`.
+4. Unpause the DAG if necessary.
+5. Select **Trigger DAG** to run it manually.
+6. Open the Grid or Graph view to monitor task progress.
+7. Confirm that the tasks finish successfully.
 
-Expected results after a successful run:
-
-
-
-\- Customers: 1,000 records.
-
-\- Products: 1,000 records.
-
-\- Orders: 1,000 records.
-
-
-
-Check for orders that reference nonexistent customers:
-
-
+For the standalone Airflow configuration used by this project, the generated administrator password can be retrieved from the running container with:
 
 ```powershell
-
-docker compose exec postgres psql -U data430 -d data430 -c "SELECT COUNT(\*) AS orders\_without\_customer FROM orders o LEFT JOIN customers c ON o.customer\_id = c.customer\_id WHERE c.customer\_id IS NULL;"
-
+docker compose exec airflow cat /opt/airflow/standalone_admin_password.txt
 ```
 
+Use the Airflow administrator username shown during setup, typically `admin`, with the retrieved password.
 
+The pipeline validates the files, prepares the database tables, executes the extraction tasks, loads the records, validates database results, and records execution details in the audit table.
 
-The expected result is zero orders without a matching customer.
+## 9. Database Validation
 
+Check the record count in each table:
 
+```powershell
+docker compose exec postgres psql -U data430 -d data430 -c "SELECT 'customers' AS table_name, COUNT(*) FROM customers UNION ALL SELECT 'products', COUNT(*) FROM products UNION ALL SELECT 'orders', COUNT(*) FROM orders;"
+```
 
-\## 10. Error Handling and Logging
+Expected results:
 
+- Customers: 1,000 records.
+- Products: 1,000 records.
+- Orders: 1,000 records.
 
+Check for orders without a matching customer:
 
-The pipeline validates input files and database records. It records ETL execution details in the `etl\_audit` table and uses database transactions where implemented by the pipeline tasks. Airflow provides task status and execution logs to help identify errors.
+```powershell
+docker compose exec postgres psql -U data430 -d data430 -c "SELECT COUNT(*) AS orders_without_customer FROM orders o LEFT JOIN customers c ON o.customer_id = c.customer_id WHERE c.customer_id IS NULL;"
+```
 
+The expected result is zero.
 
+## 10. Error Handling and Logging
 
-\## 11. Expected Results
+The pipeline checks that required data files exist and contain the expected number of records. Database validation checks record counts and customer-order relationships.
 
+Airflow provides task execution status and logs. The `etl_audit` table records successful entity loads and final validation results.
 
+If a task fails, open that task's logs in Airflow to identify the error. Check that the input files exist, the services are running, and the database connection is available.
+
+## 11. Troubleshooting
+
+**Airflow page does not open**
+- Check that Docker Desktop is running.
+- Run `docker compose ps`.
+- Inspect the Airflow logs with `docker compose logs --tail 100 airflow`.
+
+**PostgreSQL is not healthy**
+- Run `docker compose logs --tail 100 postgres`.
+- Wait for the database health check to pass before running the DAG.
+
+**DAG does not appear or has import errors**
+- Check the DAG file at `dags/etl_pipeline.py`.
+- Run `docker compose exec airflow airflow dags list-import-errors`.
+
+**A pipeline task fails**
+- Open the failed task's logs in Airflow.
+- Check the required files, database connectivity, and error message before retrying.
+
+## 12. Expected Results
 
 A successful project run should produce:
 
+- Nine data files across CSV, JSON, and YAML formats.
+- Three PostgreSQL data tables containing 1,000 records each.
+- Valid customer-order relationships.
+- A working Airflow DAG with successful task execution.
+- Audit records documenting pipeline activity.
 
+## 13. Conclusion
 
-\- Nine data files across CSV, JSON, and YAML formats.
-
-\- Three PostgreSQL tables containing 1,000 records each.
-
-\- Valid relationships between orders and customers.
-
-\- A working Airflow DAG with successful task execution.
-
-\- Audit records documenting pipeline activity.
-
-
-
-\## 12. Conclusion
-
-
-
-This project demonstrates how to generate, validate, transform, and load data using an automated ETL workflow. Docker Compose simplifies service startup, Apache Airflow manages task dependencies, and PostgreSQL stores the resulting structured data. The project also demonstrates data validation, referential integrity, and execution monitoring.
-
-
-
+This project demonstrates automated data generation, extraction, validation, and loading using Python, Pandas, Apache Airflow, and PostgreSQL. Docker Compose simplifies service startup, Airflow manages workflow dependencies, and PostgreSQL stores structured data. Database validation and audit records help verify the pipeline's results.

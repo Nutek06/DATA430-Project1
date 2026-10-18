@@ -1,13 +1,14 @@
 
 from datetime import datetime
 from pathlib import Path
-import csv
-import json
 
+import pandas as pd
 import yaml
 import psycopg2
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+
 
 DATA_DIR = Path("/opt/airflow/data")
 
@@ -20,6 +21,22 @@ DB_CONFIG = {
 }
 
 
+def extract_dataset(entity, extension):
+    path = DATA_DIR / f"{entity}.{extension}"
+
+    if extension == "csv":
+        df = pd.read_csv(path)
+    elif extension == "json":
+        df = pd.read_json(path)
+    elif extension == "yaml":
+        records = yaml.safe_load(path.read_text(encoding="utf-8"))
+        df = pd.DataFrame(records)
+    else:
+        raise ValueError(f"Unsupported format: {extension}")
+
+    return df.to_dict(orient="records")
+
+
 def validate_files():
     required = [
         "customers.csv", "customers.json", "customers.yaml",
@@ -27,22 +44,25 @@ def validate_files():
         "orders.csv", "orders.json", "orders.yaml",
     ]
 
-    missing = [name for name in required if not (DATA_DIR / name).exists()]
+    missing = [
+        name for name in required
+        if not (DATA_DIR / name).exists()
+    ]
+
     if missing:
         raise FileNotFoundError(f"Missing data files: {missing}")
 
     for name in required:
-        path = DATA_DIR / name
-        if path.suffix == ".csv":
-            with path.open(encoding="utf-8") as file:
-                if sum(1 for _ in csv.DictReader(file)) != 1000:
-                    raise ValueError(f"{name} must contain 1,000 records")
-        elif path.suffix == ".json":
-            if len(json.loads(path.read_text(encoding="utf-8"))) != 1000:
-                raise ValueError(f"{name} must contain 1,000 records")
-        elif path.suffix == ".yaml":
-            if len(yaml.safe_load(path.read_text(encoding="utf-8"))) != 1000:
-                raise ValueError(f"{name} must contain 1,000 records")
+        entity, extension = name.rsplit(".", 1)
+        records = extract_dataset(entity, extension)
+
+        if len(records) != 1000:
+            raise ValueError(
+                f"{name} must contain 1,000 records; "
+                f"found {len(records)}"
+            )
+
+        print(f"Validated {name}: {len(records)} records")
 
 
 def get_connection():
@@ -56,22 +76,6 @@ def database_setup():
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql)
-
-
-def extract_dataset(entity, extension):
-    path = DATA_DIR / f"{entity}.{extension}"
-
-    if extension == "csv":
-        with path.open(encoding="utf-8") as file:
-            return list(csv.DictReader(file))
-
-    if extension == "json":
-        return json.loads(path.read_text(encoding="utf-8"))
-
-    if extension == "yaml":
-        return yaml.safe_load(path.read_text(encoding="utf-8"))
-
-    raise ValueError(f"Unsupported format: {extension}")
 
 
 def load_entity(entity):
@@ -92,39 +96,41 @@ def load_entity(entity):
     }
 
     columns = table_columns[entity]
-    all_records = []
-
-    # Use CSV as the canonical load source; validate all three formats.
     records = extract_dataset(entity, "csv")
 
     with get_connection() as conn:
         with conn.cursor() as cur:
             for record in records:
                 values = []
+
                 for column in columns:
                     value = record[column]
+
                     if column in {
                         "customer_id", "product_id", "order_id",
                         "stock_quantity",
                     }:
                         value = int(value)
+
                     elif column in {
                         "unit_price", "total_amount",
                         "discount_amount", "shipping_cost",
                     }:
                         value = float(value)
+
                     elif column == "is_active":
-                        value = value.lower() == "true"
+                        value = str(value).lower() == "true"
+
                     values.append(value)
 
                 placeholders = ", ".join(["%s"] * len(columns))
                 column_sql = ", ".join(columns)
+
                 cur.execute(
                     f"INSERT INTO {entity} ({column_sql}) "
                     f"VALUES ({placeholders}) ON CONFLICT DO NOTHING",
                     values,
                 )
-                all_records.append(record)
 
             cur.execute(
                 """
@@ -137,10 +143,12 @@ def load_entity(entity):
                     "data430_etl_pipeline",
                     entity,
                     "SUCCESS",
-                    len(all_records),
-                    f"Loaded {len(all_records)} {entity} records from CSV",
+                    len(records),
+                    f"Loaded {len(records)} {entity} records from CSV",
                 ),
             )
+
+    print(f"Loaded {len(records)} records into {entity}")
 
 
 def load_customers():
@@ -156,17 +164,40 @@ def load_orders():
 
 
 def validate_database():
-    expected = {"customers": 1000, "products": 1000, "orders": 1000}
+    expected = {
+        "customers": 1000,
+        "products": 1000,
+        "orders": 1000,
+    }
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            for table, count in expected.items():
+            for table, expected_count in expected.items():
                 cur.execute(f"SELECT COUNT(*) FROM {table}")
-                actual = cur.fetchone()[0]
-                if actual != count:
+                actual_count = cur.fetchone()[0]
+
+                if actual_count != expected_count:
                     raise ValueError(
-                        f"{table}: expected {count} rows, found {actual}"
+                        f"{table}: expected {expected_count} rows, "
+                        f"found {actual_count}"
                     )
+
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                FROM orders o
+                LEFT JOIN customers c
+                    ON o.customer_id = c.customer_id
+                WHERE c.customer_id IS NULL
+                """
+            )
+
+            orphan_orders = cur.fetchone()[0]
+
+            if orphan_orders != 0:
+                raise ValueError(
+                    f"Found {orphan_orders} orders without customers"
+                )
 
             cur.execute(
                 """
@@ -180,9 +211,11 @@ def validate_database():
                     "all",
                     "SUCCESS",
                     sum(expected.values()),
-                    "Database row-count validation passed",
+                    "Row counts and customer relationships validated",
                 ),
             )
+
+    print("Database validation passed.")
 
 
 def completion():
@@ -196,45 +229,80 @@ with DAG(
     catchup=False,
     tags=["DATA430", "ETL"],
 ) as dag:
+
     file_validation = PythonOperator(
-        task_id="file_validation", python_callable=validate_files
+        task_id="file_validation",
+        python_callable=validate_files,
     )
+
     database_setup_task = PythonOperator(
-        task_id="database_setup", python_callable=database_setup
+        task_id="database_setup",
+        python_callable=database_setup,
     )
+
     extract_csv = PythonOperator(
         task_id="extract_csv",
-        python_callable=lambda: [extract_dataset(e, "csv")
-                                 for e in ("customers", "products", "orders")],
+        python_callable=lambda: [
+            extract_dataset(entity, "csv")
+            for entity in ("customers", "products", "orders")
+        ],
     )
+
     extract_json = PythonOperator(
         task_id="extract_json",
-        python_callable=lambda: [extract_dataset(e, "json")
-                                 for e in ("customers", "products", "orders")],
+        python_callable=lambda: [
+            extract_dataset(entity, "json")
+            for entity in ("customers", "products", "orders")
+        ],
     )
+
     extract_yaml = PythonOperator(
         task_id="extract_yaml",
-        python_callable=lambda: [extract_dataset(e, "yaml")
-                                 for e in ("customers", "products", "orders")],
+        python_callable=lambda: [
+            extract_dataset(entity, "yaml")
+            for entity in ("customers", "products", "orders")
+        ],
     )
+
     load_customers_task = PythonOperator(
-        task_id="load_customers", python_callable=load_customers
+        task_id="load_customers",
+        python_callable=load_customers,
     )
+
     load_products_task = PythonOperator(
-        task_id="load_products", python_callable=load_products
+        task_id="load_products",
+        python_callable=load_products,
     )
+
     load_orders_task = PythonOperator(
-        task_id="load_orders", python_callable=load_orders
+        task_id="load_orders",
+        python_callable=load_orders,
     )
+
     data_validation = PythonOperator(
-        task_id="data_validation", python_callable=validate_database
+        task_id="data_validation",
+        python_callable=validate_database,
     )
+
     completion_task = PythonOperator(
-        task_id="completion", python_callable=completion
+        task_id="completion",
+        python_callable=completion,
     )
 
     file_validation >> database_setup_task
-    database_setup_task >> [extract_csv, extract_json, extract_yaml]
-    [extract_csv, extract_json, extract_yaml] >> load_customers_task
-    load_customers_task >> load_products_task >> load_orders_task
+
+    database_setup_task >> [
+        extract_csv,
+        extract_json,
+        extract_yaml,
+    ]
+
+    [
+        extract_csv,
+        extract_json,
+        extract_yaml,
+    ] >> load_customers_task
+
+    load_customers_task >> load_products_task
+    load_products_task >> load_orders_task
     load_orders_task >> data_validation >> completion_task
